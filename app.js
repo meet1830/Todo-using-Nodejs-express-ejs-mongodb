@@ -1,6 +1,10 @@
 // importing express
 const express = require("express");
-const validator = require("validator");
+const bcrypt = require("bcrypt");
+const mongoose = require("mongoose");
+const UserSchema = require("./UserSchema");
+
+const { cleanUpAndValidate } = require("./Utils/AuthUtils");
 
 // creating a server
 const app = express();
@@ -11,86 +15,103 @@ const app = express();
 // ejs is run by view engine like chrome is run by v8 engine
 app.set("view engine", "ejs");
 
+// set up mongodb connection here using mongoose before app.use
+// creating mongodb connection
+// mongoose creams the mongodb syntax
+const mongoURI = `mongodb+srv://meet:meet123@cluster0.eym9t1e.mongodb.net/cluster0`;
+mongoose
+  .connect(mongoURI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then((res) => {
+    console.log("DB connected");
+  })
+  .catch((err) => {
+    console.log("Failed to connect to DB", err);
+  });
+
 // these lines help take out the body if sending some data
 app.use(express.json());
-app.use(express.urlencoded({extended: true}));
+app.use(express.urlencoded({ extended: true }));
 
 // home route
 app.get("/", (req, res) => {
-    res.send("Welcome to my app");
-})
+  res.send("Welcome to my app");
+});
 
-// login page 
+// login page
 app.get("/login", (req, res) => {
-    // return res.send("Login page");
-    // instead of just sending a string, we want to render the template for login from ejs file
-    return res.render("login");
-})
+  // return res.send("Login page");
+  // instead of just sending a string, we want to render the template for login from ejs file
+  return res.render("login");
+});
 
 app.post("/login", (req, res) => {
-    return res.render("login");
-})
+  return res.render("login");
+});
 
 app.get("/register", (req, res) => {
-    // return res.send("Register page");
-    return res.render("register");
-})
-
-// validating the information by the user in the form
-const cleanUpAndValidate = ({name, email, username, password}) => {
-    // want to return a promise so that if any error happens then can handle it with try catch or .then .catch and send it to client side
-    return new Promise((resolve, reject) => {
-        if (typeof email != "string") reject("Invalid email");
-        if (typeof name != "string") reject("Invalid name");
-        if (typeof username != "string") reject("Invalid username");
-        if (typeof password != "string") reject("Invalid password");
-
-        // if of string type but empty string
-        if (!email || !password || !username) reject("Invalid data");
-
-        // use validator package to validate email
-        // package checks only for email format and not if the email is authentic or not
-        if (!validator.isEmail(email)) reject("Invalid email format");
-
-        if (username.length < 5) reject("Username too short");
-        if (username.length > 50) reject("Username too long");
-        if (password.length < 5) reject("Password too short");
-        if (password.length > 200) reject("Password too long");
-
-        // if everything correcta
-        resolve();
-    })
-    // there is no need for a promise in manual validation that is done, but is required only for validator package
-}
+  // return res.send("Register page");
+  return res.render("register");
+});
 
 app.post("/register", async (req, res) => {
-    console.log(req.body);
-    // destructuring the info that we are getting in terminal which is filled in the form, after that form is submitted and post request is made and we get the information
-    const {name, email, username, password} = req.body;
-    
-    // since below func is async hence need to await for it so that it can validate before moving forward, hence have to mention async in parent function
-    try {
-        await cleanUpAndValidate({name, email, username, password});
-    }
-    catch(err) {
-        return res.send(
-            {
-                status: 400,
-                message: err
-            }
-        )
-    }
-    // since retuning a promise we also need to catch it. since .then and .catch will become very messy hence after this all code has to be written in .then block, we use try catch block
+  console.log(req.body);
+  // destructuring the info that we are getting in terminal which is filled in the form, after that form is submitted and post request is made and we get the information
+  const { name, email, username, password } = req.body;
 
-    return res.send(
-        {
-            status: 200,
-            message: "User registered"
-        }
-    );
-})
+  // since below func is async hence need to await for it so that it can validate before moving forward, hence have to mention async in parent function
+  try {
+    await cleanUpAndValidate({ name, email, username, password });
+  } catch (err) {
+    return res.send({
+      status: 400,
+      message: err,
+    });
+  }
+  // since retuning a promise we also need to catch it. since .then and .catch will become very messy hence after this all code has to be written in .then block, we use try catch block
+
+  // sending a password here to the backend without encrypting, security issue
+  // hence encrypting the password
+  // bcrypt internally uses md5 algo
+  const hashedPassword = await bcrypt.hash(password, 7);
+  //   console.log(hashedPassword);
+
+  // insert into db
+  let user = new UserSchema({
+    name: name,
+    username: username,
+    password: hashedPassword,
+    email: email,
+  });
+
+  // save to db
+  try {
+    const userDB = await user.save();
+    console.log(userDB);
+    return res.send({
+      status: 201,
+      // 201 - code for new user created
+      message: "Registered successfully",
+      // showing the data that is being stored in db
+      data: {
+        // _id will be generated by mongoose for every user
+        _id: userDB._id,
+        username: userDB.username,
+        email: userDB.email,
+      },
+    });
+  } catch (err) {
+    return res.send({
+      status: 400,
+      message: "Internal server error, please try again",
+      error: err,
+    });
+  }
+});
 
 // listening to server
 app.listen(8000, () => {
-    console.log("Listening to port 8000");
-})
+  console.log("Listening to port 8000");
+});
