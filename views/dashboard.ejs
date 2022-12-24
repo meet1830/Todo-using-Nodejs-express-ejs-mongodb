@@ -14,7 +14,8 @@
         <h1 class="display-4 text-center py-1">To-Do App</h1>
 
         <div class="jumbotron p-3 shadow-sm">
-            <form id="create_form" action='/create-item' method="POST">
+            <form id="create_form">
+                <!-- not making post request on form submission but on clicking button hence can remove post request syntax from form tag -->
                 <div class="d-flex align-items-center">
                     <input id="create_field" name='todo' autofocus autocomplete="off" class="form-control mr-3"
                         type="text" style="flex: 1;">
@@ -22,6 +23,10 @@
                 </div>
             </form>
         </div>
+
+        <ul id="item-list" class="list-groud pb-5">
+
+        </ul>
 
         <!-- sending post request to db to remove the particular session for the user when goes to this route -->
         <form action='/logout' method="POST">
@@ -35,7 +40,9 @@
 
     </div>
     <script>
+        let todos = <%- JSON.stringify(todos) %>
     </script>
+    <!-- axios package included, needed for request from client to backend -->
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="/browser.js"></script>
 </body>

@@ -1,12 +1,17 @@
 // importing express
 const express = require("express");
 const validator = require("validator");
-const { cleanUpAndValidate } = require("./Utils/AuthUtils");
 const bcrypt = require("bcrypt");
 const mongoose = require("mongoose");
 const UserSchema = require("./UserSchema");
 const session = require("express-session");
 const mongoDBSession = require("connect-mongodb-session")(session);
+
+// models
+const TodoModel = require("./models/TodoModel");
+
+// middlewares
+const { cleanUpAndValidate } = require("./Utils/AuthUtils");
 const isAuth = require("./middleware");
 
 // creating a server
@@ -38,6 +43,8 @@ mongoose
 // middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// create a middle ware for public folder to be accessible from both client and server side
+app.use(express.static("public"));
 
 // both packages installed for session based authentication
 // session will be created in backend and will be sent to frontend and will be stored there in the form of a cookie
@@ -219,10 +226,80 @@ app.post("/logout_from_all_devices", isAuth, async (req, res) => {
   }
 });
 
-// /dashboard means redirect to todo app
-app.get("/dashboard", isAuth, (req, res) => {
-  return res.render("dashboard");
+// dashboard means redirect to todo app
+app.get("/dashboard", isAuth, async (req, res) => {
+  // return res.render("dashboard");
+  // if send information in the form of second argument here then will be accessible to the dashboard.ejs
+
+  let todos = [];
+
+  try {
+    // below line will access all the todos of a user using username
+    todos = await TodoModel.find({ username: req.session.user.username });
+    // if it was in react then do not have to send html from frontend to backend it has its own frontend part in that case this is how to send data
+    // return res.send({
+    //     status: 200,
+    //     message: "Read successful",
+    //     data: todos
+    // })
+    console.log(todos);
+  } catch (err) {
+    return res.send({
+      status: 400,
+      message: "Database Error. Please try again",
+    });
+  }
+  // sending todos information
+  res.render("dashboard", { todos: todos });
 });
+
+// optimizing apis - sending only relevent information through them, pagination(route pagination in backend, not page pagination for frontend)
+// skip and limit - pagination means not showing all the data at once instead when user clicks on show more then load some more data
+// skip is initially 0 and limit amount of data is shown to user. once clicked show more, then skip increases by limit amount and hence the initial data is not shown - data from new value of skip, upto the count of limit is shown
+// skip = 0, limit = 20, data shown 0-20
+// skip = 20, limit = 20, data 21-40
+// skip = 40, limit = 20, data 41-60
+// skip will be provided by frontend, limit will be provided by backend
+app.post("/pagination_dashboard", isAuth, async (req, res) => {
+  // query is that which comes after & in url and req.body is params
+  // skip exists then take that value else take 0
+  const skip = req.query.skip || 0;
+  const LIMIT = 5;
+  const username = req.session.user.username;
+
+  // we are not reading everything from mongodb, can read upto a certain range, mongodb aggregation
+  // performing multiple queries in sql we use aggregate functions
+  try {
+    let todos = await TodoModel.aggregate([
+      {
+        // here use the match aggregate function to read todos belonging to a user
+        $match: {username: username}
+        // first username: first one coming from database, second one coming from frontend
+      },
+      {
+        // select data
+        // first limit coming from frontend side other we have defined
+        // skip can be string
+        $facet: {
+          data: [{$skip: parseInt(skip)}, {$limit: LIMIT}]
+        }
+      }
+    ]);
+
+    return res.send({
+      status: 200,
+      message: "Read successfully",
+      data: todos
+    })
+  } catch(err) {
+    return res.send({
+      status: 400,
+      message: "Database error. Please try again",
+      error: err
+    })
+  }
+})
+
 
 app.get("/register", (req, res) => {
   // return res.send("Register page");
@@ -300,6 +377,107 @@ app.post("/register", async (req, res) => {
     return res.send({
       status: 400,
       message: "Internal server error, please try again",
+      error: err,
+    });
+  }
+});
+
+// CUD operations(not read) are always to be authenticated first (isAuth)
+app.post("/create-item", async (req, res) => {
+  console.log(req.body);
+  // from frontend in dashboard where request is made to backend(here)
+  const todoText = req.body.todo;
+
+  if (!todoText) {
+    return res.send({
+      status: 400,
+      message: "Missing Parameters",
+    });
+  }
+
+  if (todoText.length > 100) {
+    return res.send({
+      status: 400,
+      message: "Todo text is very long. Max 100 characters allowd.",
+    });
+  }
+
+  // create new schema to insert in db
+  let todo = new TodoModel({
+    todo: todoText,
+    username: req.session.user.username,
+  });
+
+  try {
+    // saving to db
+    const todoDb = await todo.save();
+    return res.send({
+      status: 200,
+      message: "Todo created successfully",
+      data: todoDb,
+    });
+  } catch (err) {
+    return res.send({
+      status: 400,
+      message: "Database error, Please Try again.",
+    });
+  }
+});
+
+app.post("/edit-item", async (req, res) => {
+  const id = req.body.id;
+  const newData = req.body.newData;
+  console.log(req.body);
+  if (!id || !newData) {
+    return res.send({
+      status: 404,
+      message: "Missing Paramters.",
+      error: "Missing todo data",
+    });
+  }
+
+  try {
+    const todoDb = await TodoModel.findOneAndUpdate(
+      { _id: id },
+      { todo: newData }
+    );
+    return res.send({
+      status: 200,
+      message: "Updated todo succesfully",
+      data: todoDb,
+    });
+  } catch (err) {
+    return res.send({
+      status: 400,
+      message: "Database error, Please Try again.",
+      error: err,
+    });
+  }
+});
+
+app.post("/delete-item", async (req, res) => {
+  const id = req.body.id;
+  console.log(req.body);
+  if (!id) {
+    return res.send({
+      status: 404,
+      message: "Missing parameters",
+      error: "Missing id of todo to delete",
+    });
+  }
+
+  try {
+    const todoDb = await TodoModel.findOneAndDelete({ _id: id });
+
+    return res.send({
+      status: 200,
+      message: "Todo Deleted Succesfully",
+      data: todoDb,
+    });
+  } catch (err) {
+    return res.send({
+      status: 400,
+      message: "Database error. Please try again.",
       error: err,
     });
   }
