@@ -10,6 +10,8 @@ const config = {
   },
 };
 
+let skip = 0;
+
 // adding click event listener to all of the document. If clicked target contains class of button then that button is clicked and logic can be written for it.
 
 document.addEventListener("click", function (event) {
@@ -105,20 +107,50 @@ document.addEventListener("click", function (event) {
   }
 });
 
-document.getElementById("item-list").insertAdjacentHTML(
-  "beforeend",
-  todos
-    .map((item) => {
-      return `<li class="list-group-item list-group-item-action d-flex align-items-center justify-content-between">
-    <span class="item-text">
-        ${item.todo}
-    </span>
-    <div>
-        <button data-id="${item._id}" class="edit-me btn btn-secondary btn-sm mr-1">Edit</button>
-        <button data-id="${item._id}" class="delete-me btn btn-danger btn-sm">Delete</button>
-    </div>
-</li>`;
-    })
-    .join("")
-    // here have to join otherwise will get commas between todos on render
-);
+// call generatetodos function on page refresh so it can show limit no of todos on every page refresh
+window.onload = function () {
+  generateTodos();
+}
+
+function generateTodos () {
+  // making axios request to backend, object empty as we just want to read data
+  axios.post(`/pagination_dashboard?skip=${skip}`, JSON.stringify({}), config)
+  .then((res) => {
+    if (res.status !== 200) {
+      alert("Failed to read, please try again")
+      return;
+    }
+    console.log(res.data.data[0].data);
+    const todoList = res.data.data[0].data;
+    if (todoList.length === 0) {
+      alert("No more todos to show")
+      return;
+    }
+
+    // now mapping to show todos, cut paste above map rendering and paste it here since dont want to render all the data now
+    document.getElementById("item-list").insertAdjacentHTML(
+      "beforeend",
+      todoList
+        .map((item) => {
+          return `<li class="list-group-item list-group-item-action d-flex align-items-center justify-content-between">
+        <span class="item-text">
+            ${item.todo}
+        </span>
+        <div>
+            <button data-id="${item._id}" class="edit-me btn btn-secondary btn-sm mr-1">Edit</button>
+            <button data-id="${item._id}" class="delete-me btn btn-danger btn-sm">Delete</button>
+        </div>
+    </li>`;
+        })
+        .join("")
+        // here have to join otherwise will get commas between todos on render
+    );
+
+    // increment the skip by todolist length hence for 13 todos and 5 limit length the last one only renders 3 todos
+    skip += todoList.length;
+  })
+  .catch((err) => {
+    console.log(err);
+    alert("Something went wrong")
+  })
+}

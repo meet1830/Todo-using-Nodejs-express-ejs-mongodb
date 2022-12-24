@@ -28,6 +28,11 @@
 
         </ul>
 
+        <a id="show_more">Show more</a>
+        <br>
+        <br>
+        <br>
+
         <!-- sending post request to db to remove the particular session for the user when goes to this route -->
         <form action='/logout' method="POST">
             <button> Logout <button>
@@ -39,9 +44,7 @@
         </form>
 
     </div>
-    <script>
-        let todos = <%- JSON.stringify(todos) %>
-    </script>
+    <!-- removing the todos declaration for ejs since now reading and rendering todos in browser.js only -->
     <!-- axios package included, needed for request from client to backend -->
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="/browser.js"></script>
